@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Parametrik Geodesic Stüdyo</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
+
+        body { margin: 0; overflow: hidden; font-family: 'Inter', sans-serif; background-color: #1a1a1a; color: #ececec; }
+        
+        /* SOL PANEL: KONTROLLER */
+        #sidebar {
+            position: absolute; top: 0; left: 0; width: 340px; height: 100vh;
+            background: rgba(30, 30, 30, 0.95); backdrop-filter: blur(10px);
+            border-right: 1px solid #333; padding: 20px; overflow-y: auto;
+            display: flex; flex-direction: column; gap: 15px; box-shadow: 5px 0 20px rgba(0,0,0,0.3);
+        }
+
+        h1 { font-size: 1.2rem; margin: 0; color: #4cc9f0; font-weight: 600; letter-spacing: 1px; }
+        h2 { font-size: 0.9rem; margin: 10px 0 5px 0; color: #888; text-transform: uppercase; border-bottom: 1px solid #444; padding-bottom: 5px; }
+
+        .control-group { display: flex; flex-direction: column; gap: 5px; }
+        label { font-size: 0.8rem; color: #ccc; display: flex; justify-content: space-between; }
+        
+        input[type="range"], select, input[type="number"] {
+            width: 100%; background: #2a2a2a; border: 1px solid #444;
+            color: white; padding: 8px; border-radius: 4px; outline: none;
+        }
+        input[type="range"] { padding: 0; height: 5px; margin: 10px 0; accent-color: #4cc9f0; cursor: pointer;}
+
+        /* BUTONLAR */
+        .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+        button {
+            padding: 10px; border: none; border-radius: 4px; cursor: pointer;
+            font-weight: 600; font-size: 0.8rem; transition: 0.2s;
+            background: #333; color: #fff;
+        }
+        button:hover { background: #444; }
+        button.primary { background: #4361ee; }
+        button.primary:hover { background: #3a0ca3; }
+        button.danger { background: #e63946; }
+        
+        /* SAĞ PANEL: BİLGİ & ANALİZ */
+        #info-panel {
+            position: absolute; top: 20px; right: 20px; width: 300px;
+            background: rgba(30, 30, 30, 0.9); border-radius: 8px;
+            padding: 15px; pointer-events: none; border: 1px solid #444;
+        }
+        .stat-row { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 5px; border-bottom: 1px solid #444; padding-bottom: 2px;}
+        .stat-val { font-weight: bold; color: #4cc9f0; }
+        .warning { color: #e63946; font-weight: bold; animation: pulse 2s infinite; }
+
+        /* BOM TABLOSU (GİZLİ) */
+        #bom-container {
+            margin-top: 20px; border-top: 1px solid #444; padding-top: 10px;
+        }
+        .bom-item { font-size: 0.8rem; display: flex; justify-content: space-between; margin-bottom: 3px; color: #aaa; }
+        .type-tag { padding: 2px 6px; border-radius: 3px; font-size: 0.7rem; font-weight: bold; color: black; }
+
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        
+        /* Tooltip */
+        #tooltip {
+            position: absolute; background: black; color: white; padding: 5px 10px;
+            border-radius: 4px; font-size: 0.8rem; pointer-events: none; display: none;
+            border: 1px solid #555; z-index: 100;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="tooltip"></div>
+
+    <div id="sidebar">
+        <h1>📐 GEODESIC STUDIO Pro</h1>
+        
+        <h2>1. Geometri</h2>
+        <div class="control-group">
+            <label>Yarıçap (m): <span id="val-radius">3</span></label>
+            <input type="range" id="radius" min="1" max="10" step="0.1" value="3">
+        </div>
+        <div class="control-group">
+            <label>Frekans (V):</label>
+            <select id="frequency">
+                <option value="1">1V (Icosahedron)</option>
+                <option value="2" selected>2V (Standart)</option>
+                <option value="3">3V (Profesyonel)</option>
+                <option value="4">4V (Geniş Çap)</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label>Kesim Yüksekliği: <span id="val-cut">0.5 (Yarım)</span></label>
+            <input type="range" id="cutRatio" min="0.1" max="0.9" step="0.05" value="0.5">
+        </div>
+
+        <h2>2. Malzeme & Profil</h2>
+        <div class="control-group">
+            <label>Profil Tipi:</label>
+            <select id="materialType">
+                <option value="wood">Ahşap 3x3cm</option>
+                <option value="steel">Çelik Boru (21mm)</option>
+                <option value="pvc">PVC Boru (32mm)</option>
+                <option value="alu">Alüminyum Profil</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label>Bağlantı Tipi:</label>
+            <select id="hubType">
+                <option value="pipe">Ezilmiş Boru Ucu (Hubsız)</option>
+                <option value="star">Yıldız Plaka (Metal)</option>
+                <option value="connector">3D Baskı/Plastik Hub</option>
+            </select>
+        </div>
+
+        <h2>3. Görünüm & Araçlar</h2>
+        <div class="control-group">
+            <label>Patlatılmış Görünüm:</label>
+            <input type="range" id="explode" min="0" max="2" step="0.01" value="0">
+        </div>
+        
+        <div class="btn-grid">
+            <button id="btnToggleStruts" class="danger">Mod: Sil/Ekle</button>
+            <button id="btnReset">Sıfırla</button>
+        </div>
+        
+        <h2>4. İhracat</h2>
+        <div class="btn-grid">
+            <button class="primary" id="btnExportBOM">📄 Excel/CSV (BOM)</button>
+            <button class="primary" id="btnExportOBJ">🧊 3D Model (.OBJ)</button>
+        </div>
+
+        <div id="bom-container">
+            <h3 style="font-size:0.8rem; color:#888;">Kesim Özeti</h3>
+            <div id="bom-preview"></div>
+        </div>
+    </div>
+
+    <div id="info-panel">
+        <h3 style="margin-top:0; color:#4cc9f0;">Mühendislik Analizi</h3>
+        <div class="stat-row"><span>Tahmini Ağırlık:</span> <span id="stat-weight" class="stat-val">0 kg</span></div>
+        <div class="stat-row"><span>Toplam Boru:</span> <span id="stat-length" class="stat-val">0 m</span></div>
+        <div class="stat-row"><span>Tahmini Maliyet:</span> <span id="stat-cost" class="stat-val">0 ₺</span></div>
+        <div style="margin-top:10px; border-top:1px solid #555; padding-top:5px;">
+            <div class="stat-row"><span>En Uzun Boru:</span> <span id="stat-maxlen" class="stat-val">0 m</span></div>
+            <div class="stat-row"><span>Narinlik Oranı:</span> <span id="stat-slenderness" class="stat-val">0</span></div>
+            <div id="structural-warning" style="font-size:0.8rem; margin-top:5px; display:none;" class="warning">⚠️ UYARI: Bazı borular kritik burkulma sınırında! Çapı küçültün veya malzemeyi güçlendirin.</div>
+        </div>
+    </div>
+
+    <script>
+        // --- VERİTABANI: MALZEME ÖZELLİKLERİ ---
+        // Yoğunluk (kg/m), Fiyat (TL/m), Elastisite Modülü (GPa - Burkulma için), Atalet Yarıçapı (r - cm)
+        const MATERIALS = {
+            wood: { name: "Ahşap 3x3cm", density: 0.5, price: 40, E: 11, r: 0.86, color: 0x8B4513 },
+            steel: { name: "Çelik Boru (Ø21mm)", density: 1.2, price: 120, E: 200, r: 0.74, color: 0x71797E },
+            pvc: { name: "PVC Boru (Ø32mm)", density: 0.4, price: 50, E: 3, r: 1.1, color: 0xE0E0E0 },
+            alu: { name: "Alüminyum Profil", density: 0.6, price: 180, E: 69, r: 0.9, color: 0xA0A0A0 }
+        };
+
+        // --- THREE.JS SAHNE KURULUMU ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x111111);
+        scene.fog = new THREE.Fog(0x111111, 20, 100);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(8, 5, 8);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        // Işıklar
+        const ambiLight = new THREE.AmbientLight(0x404040, 2); 
+        scene.add(ambiLight);
+        
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+        dirLight.position.set(10, 20, 10);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // Zemin
+        const grid = new THREE.GridHelper(20, 20, 0x333333, 0x222222);
+        scene.add(grid);
+
+        // --- UYGULAMA DEĞİŞKENLERİ ---
+        let domesParts = []; // Tüm strut ve hub meshleri
+        let geometryData = { struts: [], nodes: [] }; // Matematiksel veri
+        let editMode = false; // Silme modu
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        const tooltip = document.getElementById('tooltip');
+
+        // --- GEODESIC MATEMATİK MOTORU ---
+        const PHI = (1 + Math.sqrt(5)) / 2;
+
+        function normalize(v) {
+            const l = Math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
+            return { x: v.x/l, y: v.y/l, z: v.z/l };
+        }
+
+        function midpoint(p1, p2) {
+            return { x: (p1.x + p2.x)/2, y: (p1.y + p2.y)/2, z: (p1.z + p2.z)/2 };
+        }
+
+        function dist(p1, p2) {
+            return Math.sqrt(Math.pow(p2.x-p1.x, 2) + Math.pow(p2.y-p1.y, 2) + Math.pow(p2.z-p1.z, 2));
+        }
+
+        function generateIcosahedron() {
+            const verts = [];
+            // Icosahedron vertices
+            const t = PHI;
+            verts.push({x:-1,y:t,z:0}, {x:1,y:t,z:0}, {x:-1,y:-t,z:0}, {x:1,y:-t,z:0});
+            verts.push({x:0,y:-1,z:t}, {x:0,y:1,z:t}, {x:0,y:-1,z:-t}, {x:0,y:1,z:-t});
+            verts.push({x:t,y:0,z:-1}, {x:t,y:0,z:1}, {x:-t,y:0,z:-1}, {x:-t,y:0,z:1});
+            return verts.map(normalize);
+        }
+
+        // V1, V2, V3.. üretimi
+        function subdivide(vectors, freq) {
+            if (freq === 1) return vectors;
+            // Bu basit bir placeholder. Gerçek 2V/3V algoritması karmaşık olduğu için
+            // simülasyon amaçlı "Sphere Geometry" üzerinden vertex alıp işleyeceğiz.
+            // Three.js IcosahedronGeometry zaten bu matematiği yapıyor.
+            return []; 
+        }
+
+        function createGeodesicStructure() {
+            // Temizlik
+            domesParts.forEach(p => {
+                scene.remove(p);
+                if(p.geometry) p.geometry.dispose();
+                if(p.material) p.material.dispose();
+            });
+            domesParts = [];
+            geometryData = { struts: [], nodes: [] };
+
+            // Parametreler
+            const r = parseFloat(document.getElementById('radius').value);
+            const freq = parseInt(document.getElementById('frequency').value);
+            const cutRatio = parseFloat(document.getElementById('cutRatio').value);
+            const matKey = document.getElementById('materialType').value;
+            const explodeVal = parseFloat(document.getElementById('explode').value);
+
+            const materialProps = MATERIALS[matKey];
+
+            // Three.js Geometry Engine Kullanarak Vertexleri Bul
+            const baseGeo = new THREE.IcosahedronGeometry(r, freq);
+            const posAttr = baseGeo.attributes.position;
+            
+            // Yükseklik sınırını belirle (Min Y ve Max Y bul)
+            let minY = Infinity, maxY = -Infinity;
+            for(let i=0; i<posAttr.count; i++) {
+                if(posAttr.getY(i) < minY) minY = posAttr.getY(i);
+                if(posAttr.getY(i) > maxY) maxY = posAttr.getY(i);
+            }
+            const totalH = maxY - minY;
+            const cutY = minY + (totalH * cutRatio); // Kesim düzlemi
+
+            const validIndices = new Set();
+            const nodes = [];
+            
+            // Geçerli Vertexleri Filtrele
+            for(let i=0; i<posAttr.count; i++) {
+                const y = posAttr.getY(i);
+                if(y >= cutY - 0.1) { // Biraz tolerans
+                    validIndices.add(i);
+                    nodes[i] = new THREE.Vector3(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
+                }
+            }
+
+            // Strutları (Kenarları) Oluştur
+            // Three.js geometrisinde vertexler tekrarlanabilir, unique set lazım.
+            const uniqueStruts = new Set();
+            const index = baseGeo.index; // Eğer indexli geometri ise
+
+            // Kenar işleme fonksiyonu
+            const addStrut = (idx1, idx2) => {
+                if(!validIndices.has(idx1) || !validIndices.has(idx2)) return;
+                
+                const v1 = nodes[idx1];
+                const v2 = nodes[idx2];
+
+                // Patlatma Efekti (Explode)
+                const center = new THREE.Vector3(0, (minY+maxY)/2, 0);
+                const midP = new THREE.Vector3().addVectors(v1, v2).multiplyScalar(0.5);
+                const dir = midP.clone().sub(center).normalize().multiplyScalar(explodeVal);
+
+                const p1 = v1.clone().add(dir);
+                const p2 = v2.clone().add(dir);
+
+                // Benzersiz anahtar oluştur (uzunluk hassasiyetiyle A,B,C tipi belirlemek için)
+                const length = p1.distanceTo(p2);
+                // Sıralı index stringi strut ID olsun
+                const id = idx1 < idx2 ? `${idx1}-${idx2}` : `${idx2}-${idx1}`;
+
+                if(!uniqueStruts.has(id)) {
+                    uniqueStruts.add(id);
+                    
+                    // Görsel Strut
+                    const cylinderGeo = new THREE.CylinderGeometry(0.03, 0.03, length, 8);
+                    cylinderGeo.rotateX(Math.PI / 2);
+                    const material = new THREE.MeshPhysicalMaterial({ 
+                        color: materialProps.color, 
+                        metalness: 0.2, roughness: 0.7,
+                        clearcoat: 0.5
+                    });
+
+                    const strutMesh = new THREE.Mesh(cylinderGeo, material);
+                    strutMesh.position.copy(p1).add(p2).multiplyScalar(0.5);
+                    strutMesh.lookAt(p2);
+                    
+                    // Düzlemsel kesim için Y offset (Kubbeyi zemine oturt)
+                    strutMesh.position.y -= cutY;
+                    
+                    strutMesh.userData = { 
+                        type: 'strut', 
+                        length: length, 
+                        id: id,
+                        mat: materialProps
+                    };
+                    
+                    scene.add(strutMesh);
+                    domesParts.push(strutMesh);
+                    geometryData.struts.push(strutMesh);
+                }
+            };
+
+            // Icosahedron üçgenlerinden kenarları çek
+            // Three.js IcosahedronGeo indexli gelir değilse pozisyondan unique bulmak gerekir
+            // Basitlik için pozisyon karşılaştırması yapalım.
+            // Ama IcosahedronGeometry (freq > 0) indexli değil, face array var.
+            // Biz position attribute üzerinde döngü kurup mesafe kontrolü yapacağız (daha yavaş ama kesin)
+            
+            // Performanslı yöntem: Geometry indexlerini kullanmak
+            // IcosahedronGeometry her yüzey için ayrı vertex atıyor olabilir (flat shading için).
+            // O yüzden unique vertex map oluşturmalıyız.
+            
+            const tolerance = 0.001;
+            const uniqueNodesMap = []; // {vec: Vector3, originalIndex: int}
+            const mergedNodes = [];
+            
+            for(let i=0; i<posAttr.count; i++) {
+                const v = new THREE.Vector3(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
+                let found = -1;
+                for(let j=0; j<mergedNodes.length; j++) {
+                    if(mergedNodes[j].distanceTo(v) < tolerance) {
+                        found = j;
+                        break;
+                    }
+                }
+                if(found === -1) {
+                    uniqueNodesMap[i] = mergedNodes.length;
+                    mergedNodes.push(v);
+                } else {
+                    uniqueNodesMap[i] = found;
+                }
+            }
+
+            // Şimdi yüzeyleri gez
+            for(let i=0; i<posAttr.count; i+=3) {
+                const a = uniqueNodesMap[i];
+                const b = uniqueNodesMap[i+1];
+                const c = uniqueNodesMap[i+2];
+
+                // Üç kenar
+                // Fakat nodes[] dizimiz orijinal posAttr indexlerine göre değil merged'a göre olmalı
+                // Burada mantığı biraz sadeleştiriyorum:
+                // Nodes arrayini mergedNodes ile değiştirelim.
+            }
+            
+            // YUKARIDAKİ KISIM KARMAŞIKLAŞTIĞI İÇİN BASİTLEŞTİRİLMİŞ YÖNTEM:
+            // Three.js wireframe mantığını taklit edelim.
+            // Tüm üçgenlerin kenarlarını oluşturup duplicate olanları eleyelim.
+            
+            const tempStruts = new Set();
+            
+            for(let i=0; i<posAttr.count; i+=3) {
+                const vA = new THREE.Vector3().fromBufferAttribute(posAttr, i);
+                const vB = new THREE.Vector3().fromBufferAttribute(posAttr, i+1);
+                const vC = new THREE.Vector3().fromBufferAttribute(posAttr, i+2);
+
+                // Kesim kontrolü (Merkez noktası)
+                const centroidY = (vA.y + vB.y + vC.y) / 3;
+                if(centroidY < cutY) continue;
+
+                const edges = [[vA, vB], [vB, vC], [vC, vA]];
+                
+                edges.forEach(edge => {
+                    const p1 = edge[0];
+                    const p2 = edge[1];
+                    
+                    // Kenar merkezi kesimin çok altındaysa çizme
+                    if((p1.y + p2.y)/2 < cutY - 0.05) return;
+
+                    // Unique Key: Merkez noktası stringi
+                    const mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+                    const key = `${mid.x.toFixed(3)},${mid.y.toFixed(3)},${mid.z.toFixed(3)}`;
+
+                    if(!tempStruts.has(key)) {
+                        tempStruts.add(key);
+                        
+                        // Patlatma hesabı
+                        const center = new THREE.Vector3(0, (minY+maxY)/2, 0);
+                        const dir = mid.clone().sub(center).normalize().multiplyScalar(explodeVal);
+                        const finalP1 = p1.clone().add(dir);
+                        const finalP2 = p2.clone().add(dir);
+                        
+                        const len = finalP1.distanceTo(finalP2);
+
+                        const geo = new THREE.CylinderGeometry(0.025, 0.025, len, 8);
+                        geo.rotateX(Math.PI/2);
+                        const mat = new THREE.MeshStandardMaterial({ 
+                            color: materialProps.color, roughness: 0.6, metalness: 0.3
+                        });
+                        const mesh = new THREE.Mesh(geo, mat);
+                        mesh.position.copy(finalP1).add(finalP2).multiplyScalar(0.5);
+                        mesh.lookAt(finalP2);
+                        mesh.position.y -= cutY; // Zemine indir
+
+                        mesh.userData = { type: 'strut', length: len, mat: materialProps };
+                        scene.add(mesh);
+                        domesParts.push(mesh);
+                        geometryData.struts.push(mesh);
+
+                        // HUB (Bağlantı Noktası) Ekle
+                        if(document.getElementById('hubType').value !== 'pipe') {
+                            // Basitlik için sadece p1'e koyuyoruz (set ile duplicate önleyerek)
+                            createHub(finalP1, cutY, explodeVal);
+                        }
+                    }
+                });
+            }
+            
+            // Hubları tekrar oluştur (Vertex bazlı)
+            // Bu örnekte performans için sadece strutları hesapladım. 
+            // Hublar için vertex seti gerekir.
+            const hubSet = new Set();
+            geometryData.struts.forEach(s => {
+                // Silindirin uç noktalarını bulmak zor, basit bir hub görselleştirmesi:
+                // Strut merkezine değil uçlarına hub lazım. 
+                // Icosahedron vertexlerini tarayıp hub koymak daha doğru.
+            });
+            
+            // Icosahedron vertexlerine hub koyalım
+            if(document.getElementById('hubType').value !== 'pipe') {
+                 for(let i=0; i<posAttr.count; i++) {
+                    const v = new THREE.Vector3().fromBufferAttribute(posAttr, i);
+                    if(v.y >= cutY - 0.05) {
+                        // Patlatma
+                         const center = new THREE.Vector3(0, (minY+maxY)/2, 0);
+                         const dir = v.clone().sub(center).normalize().multiplyScalar(explodeVal);
+                         const finalV = v.clone().add(dir);
+                         
+                         const k = `${finalV.x.toFixed(3)},${finalV.y.toFixed(3)},${finalV.z.toFixed(3)}`;
+                         if(!hubSet.has(k)) {
+                             hubSet.add(k);
+                             const hubGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.02, 16);
+                             const hubMat = new THREE.MeshStandardMaterial({ color: 0x333 });
+                             const hub = new THREE.Mesh(hubGeo, hubMat);
+                             hub.position.copy(finalV);
+                             hub.position.y -= cutY;
+                             
+                             // Merkeze bak
+                             hub.lookAt(new THREE.Vector3(0, hub.position.y, 0));
+                             hub.rotateX(Math.PI/2);
+                             
+                             scene.add(hub);
+                             domesParts.push(hub);
+                         }
+                    }
+                 }
+            }
+
+            analyzeStructure();
+        }
+
+        function createHub(pos, cutY, explode) {
+            // Yukarıda toplu yapıldığı için boş.
+        }
+
+        // --- ANALİZ & BOM ---
+        function analyzeStructure() {
+            let totalLen = 0;
+            let maxLen = 0;
+            
+            // Strut Tiplerini Sınıflandır (Uzunluklarına göre A, B, C...)
+            const groups = {};
+            
+            geometryData.struts.forEach(s => {
+                if(s.visible === false) return; // Silinenleri sayma
+
+                totalLen += s.userData.length;
+                if(s.userData.length > maxLen) maxLen = s.userData.length;
+
+                // Gruplama (1mm tolerans)
+                const lenKey = s.userData.length.toFixed(3);
+                if(!groups[lenKey]) groups[lenKey] = { count: 0, len: s.userData.length };
+                groups[lenKey].count++;
+                
+                // Görsel renklendirme (Tiplere göre renk tonu)
+                // Bu örnekte tüm malzemeler aynı renk kalsın istedik ama
+                // debug için A,B,C renkleri verilebilir.
+            });
+
+            // Harf ata (A, B, C...)
+            const sortedKeys = Object.keys(groups).sort((a,b) => parseFloat(a) - parseFloat(b));
+            let bomHTML = "";
+            const letters = "ABCDEFGH";
+            
+            sortedKeys.forEach((key, idx) => {
+                const g = groups[key];
+                const code = letters[idx] || ("T" + idx);
+                bomHTML += `
+                    <div class="bom-item">
+                        <span><span class="type-tag" style="background:${getColorForType(idx)}">${code}</span> : ${(parseFloat(key)*100).toFixed(1)} cm</span>
+                        <span>x ${g.count} Adet</span>
+                    </div>
+                `;
+            });
+            document.getElementById('bom-preview').innerHTML = bomHTML;
+
+            // İstatistikler
+            const mat = MATERIALS[document.getElementById('materialType').value];
+            const totalWeight = totalLen * mat.density;
+            const totalCost = totalLen * mat.price;
+
+            document.getElementById('stat-length').innerText = totalLen.toFixed(1) + " m";
+            document.getElementById('stat-weight').innerText = totalWeight.toFixed(1) + " kg";
+            document.getElementById('stat-cost').innerText = Math.round(totalCost) + " ₺";
+            document.getElementById('stat-maxlen').innerText = maxLen.toFixed(3) + " m";
+
+            // Burkulma Analizi (Basitleştirilmiş Euler)
+            // Kritik Yük Pcr = (π² * E * I) / L²
+            // Narinlik = L / r. (Ahşap için > 50, Çelik için > 100 riskli kabul edelim basitçe)
+            // r (Atalet yarıçapı) veritabanında cm cinsinden. L metre.
+            // L(cm) / r(cm)
+            const slenderness = (maxLen * 100) / mat.r;
+            document.getElementById('stat-slenderness').innerText = Math.round(slenderness);
+
+            const warningEl = document.getElementById('structural-warning');
+            // Basit eşik değerleri
+            let limit = 120; 
+            if(mat.name.includes("Ahşap")) limit = 80;
+            if(mat.name.includes("PVC")) limit = 60; // PVC çok esner
+
+            if(slenderness > limit) {
+                warningEl.style.display = 'block';
+            } else {
+                warningEl.style.display = 'none';
+            }
+        }
+
+        function getColorForType(idx) {
+            const colors = ["#FFD700", "#FF6347", "#4169E1", "#32CD32", "#DA70D6"];
+            return colors[idx % colors.length];
+        }
+
+        // --- ETKİLEŞİMLER ---
+        const inputs = ['radius', 'frequency', 'cutRatio', 'materialType', 'hubType', 'explode'];
+        inputs.forEach(id => {
+            document.getElementById(id).addEventListener('input', (e) => {
+                // Değerleri label'a yaz
+                if(id === 'radius') document.getElementById('val-radius').innerText = e.target.value;
+                if(id === 'cutRatio') document.getElementById('val-cut').innerText = e.target.value;
+                
+                createGeodesicStructure();
+            });
+        });
+
+        // Silme Modu (Kapı/Pencere)
+        const btnToggle = document.getElementById('btnToggleStruts');
+        btnToggle.addEventListener('click', () => {
+            editMode = !editMode;
+            btnToggle.innerText = editMode ? "Mod: Düzenleme Aktif (Tıkla Sil)" : "Mod: Sil/Ekle";
+            btnToggle.style.background = editMode ? "#e63946" : "#333";
+        });
+
+        document.getElementById('btnReset').addEventListener('click', () => {
+            createGeodesicStructure();
+        });
+
+        window.addEventListener('pointerdown', (e) => {
+            if(e.target.closest('#sidebar')) return;
+            if(!editMode) return;
+
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+
+            const intersects = raycaster.intersectObjects(geometryData.struts);
+            if(intersects.length > 0) {
+                const obj = intersects[0].object;
+                obj.visible = !obj.visible; // Toggle visibility
+                analyzeStructure(); // BOM güncelle
+            }
+        });
+
+        // Tooltip Logic
+        window.addEventListener('pointermove', (e) => {
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(geometryData.struts);
+            
+            if(intersects.length > 0) {
+                const s = intersects[0].object;
+                if(s.visible) {
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = e.clientX + 15 + 'px';
+                    tooltip.style.top = e.clientY + 15 + 'px';
+                    tooltip.innerText = `Uzunluk: ${(s.userData.length*100).toFixed(1)} cm`;
+                    s.material.emissive.setHex(0x444444);
+                }
+            } else {
+                tooltip.style.display = 'none';
+                geometryData.struts.forEach(s => s.material.emissive.setHex(0x000000));
+            }
+        });
+
+        // --- İHRACAT (EXPORT) ---
+        document.getElementById('btnExportBOM').addEventListener('click', () => {
+            let csv = "Tip,Uzunluk (cm),Adet,Malzeme\n";
+            // analyzeStructure içinde hesaplanan groups verisini buraya taşımak lazım
+            // Basitçe DOM'dan okuyalım veya tekrar hesaplayalım (Tekrar hesaplamak daha temiz)
+            
+            const groups = {};
+            geometryData.struts.forEach(s => {
+                if(!s.visible) return;
+                const lenKey = s.userData.length.toFixed(3);
+                if(!groups[lenKey]) groups[lenKey] = 0;
+                groups[lenKey]++;
+            });
+            const sortedKeys = Object.keys(groups).sort((a,b) => parseFloat(a) - parseFloat(b));
+            const letters = "ABCDEFGH";
+            const matName = MATERIALS[document.getElementById('materialType').value].name;
+
+            sortedKeys.forEach((key, idx) => {
+                const code = letters[idx] || ("T" + idx);
+                csv += `${code},${(parseFloat(key)*100).toFixed(1)},${groups[key]},${matName}\n`;
+            });
+
+            const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+            saveAs(blob, "dome_kesim_listesi.csv");
+        });
+
+        document.getElementById('btnExportOBJ').addEventListener('click', () => {
+            // Basit OBJ export (Three.js OBJExporter kullanmadan manuel string build)
+            // Çünkü harici kütüphane dependency azaltmak istiyoruz.
+            let objStr = "# Geodesic Dome Export\n";
+            let vertCount = 1;
+            
+            geometryData.struts.forEach(s => {
+                if(!s.visible) return;
+                // Her silindir için basit bir çizgi (Line) export edebiliriz veya 
+                // Mesh export etmek çok dosya boyutu yaratır.
+                // Profesyonel CAD için "Line" export daha iyidir (Centerline).
+                
+                // Silindirin pozisyonu ve rotasyonundan uç noktaları bulmak zor olduğu için
+                // Geometri oluştururken kaydettiğimiz veriyi kullanmalıydık.
+                // Burada mecburen silindirin merkezinden yola çıkarak hesaplayacağız.
+                // Veya basitçe Mesh vertexlerini dökeceğiz.
+                
+                // Basit Mesh Export (Low Poly)
+                const geo = s.geometry;
+                const pos = geo.attributes.position;
+                
+                // World Matrix uygula
+                s.updateMatrixWorld();
+                
+                for(let i=0; i<pos.count; i++) {
+                    const v = new THREE.Vector3().fromBufferAttribute(pos, i);
+                    v.applyMatrix4(s.matrixWorld);
+                    objStr += `v ${v.x.toFixed(4)} ${v.y.toFixed(4)} ${v.z.toFixed(4)}\n`;
+                }
+                
+                objStr += `o Strut_${vertCount}\n`;
+                for(let i=0; i<pos.count; i+=3) {
+                    objStr += `f ${vertCount+i} ${vertCount+i+1} ${vertCount+i+2}\n`;
+                }
+                vertCount += pos.count;
+            });
+            
+            const blob = new Blob([objStr], { type: "text/plain;charset=utf-8" });
+            saveAs(blob, "dome_model.obj");
+        });
+
+        // Başlangıç
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        createGeodesicStructure();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+    </script>
+</body>
+</html>
